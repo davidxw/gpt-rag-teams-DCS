@@ -67,8 +67,9 @@ web_modules/
 
 # dotenv environment variable files
 .env
-.env.*
+.env.*.user
 !.env.example
+!.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -159,7 +160,6 @@ Thumbs.db
 
 # TeamsFx files
 env/.env.*.user
-env/.env.local
 env/.env.sandbox
 .localConfigs
 .localConfigs.playground

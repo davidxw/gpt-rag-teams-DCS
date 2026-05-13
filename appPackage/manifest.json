@@ -14,14 +14,14 @@
         "outline": "outline.png"
     },
     "name": {
-        "short": "test-team-agent${{APP_NAME_SUFFIX}}",
-        "full": "full name for test-team-agent"
+        "short": "ft-ria-bot${{APP_NAME_SUFFIX}}",
+        "full": "Retail Intelligent Assist Bot"
     },
     "description": {
-        "short": "short description for test-team-agent",
-        "full": "full description for test-team-agent"
+        "short": "Retail Intelligent Assist Bot",
+        "full": "A Teams Bot for Retail Intelligent Assist"
     },
-    "accentColor": "#FFFFFF",
+    "accentColor": "#3E9DDD",
     "supportsChannelFeatures": "tier1",
     "bots": [
         {

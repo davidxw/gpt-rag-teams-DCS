@@ -8,7 +8,7 @@ provision:
   - uses: teamsApp/create
     with:
       # app name
-      name: test-team-agent${{APP_NAME_SUFFIX}}
+      name: ft-ria-bot${{APP_NAME_SUFFIX}}
     # Write the information of created resources into environment file for
     # the specified environment variable(s).
     writeToEnvironmentFile:
@@ -18,7 +18,7 @@ provision:
   - uses: aadApp/create
     with:
       # The Microsoft Entra application's display name
-      name: test-team-agent${{APP_NAME_SUFFIX}}
+      name: ft-ria-bot${{APP_NAME_SUFFIX}}
       generateClientSecret: true
       generateServicePrincipal: true
       signInAudience: AzureADMultipleOrgs
@@ -34,7 +34,7 @@ provision:
   - uses: botFramework/create
     with:
       botId: ${{BOT_ID}}
-      name: test-team-agent
+      name: ft-ria-bot
       messagingEndpoint: ${{BOT_ENDPOINT}}/api/messages
       description: ""
       channels:
