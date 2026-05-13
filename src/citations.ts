@@ -157,16 +157,30 @@ function htmlToMarkdown(input: string): string {
  * structure while keeping every marker chippable.
  */
 function flattenNestedLists(input: string): string {
-  // Matches: "1. **Title**:\n   - Body..." up to the next numbered item,
-  // blank line, or end of string. The body capture is everything until
-  // the lookahead.
-  const RE = /^(\d+)\.\s+(\*\*[^\n]+?\*\*)\s*:\s*\n[ \t]+-\s+([\s\S]+?)(?=\n[ \t]*(?:\d+\.\s|-\s|\n|$))/gm;
-  return input.replace(RE, (_m, _n, title: string, body: string) => {
-    // Collapse internal soft-wrap newlines/indents in the body so the
-    // marker stays inline with the preceding sentence.
-    const flatBody = body.replace(/\s*\n[ \t]*/g, " ").trim();
-    return `- ${title}: ${flatBody}`;
-  });
+  // Generic pass: any indented sub-bullet line ("  - body" / "   * body"
+  // / "    o body") is merged into the most recent non-empty line above
+  // it, separated by a single space. This collapses both numbered
+  // parents ("1. **X**:\n   - body") and bulleted parents
+  // ("- **X**:\n   - body"), which is what the orchestrator currently
+  // emits. The merge preserves bold/italic/quotes inside the body so
+  // citation markers stay inline with their sentence.
+  const SUB_BULLET = /^[ \t]+(?:[-*•]|o)\s+(.*)$/;
+  const lines = input.split(/\n/);
+  const out: string[] = [];
+  for (const line of lines) {
+    const m = SUB_BULLET.exec(line);
+    if (m && out.length > 0) {
+      // Find the most recent non-empty line to attach to.
+      let i = out.length - 1;
+      while (i >= 0 && out[i].trim() === "") i--;
+      if (i >= 0) {
+        out[i] = `${out[i].trimEnd()} ${m[1].trim()}`;
+        continue;
+      }
+    }
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 /**
