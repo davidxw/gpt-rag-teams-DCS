@@ -83,4 +83,9 @@ export const config = {
     process.env.BOT_BASE_URL ||
     (process.env.BOT_DOMAIN ? `https://${process.env.BOT_DOMAIN}` : "") ||
     (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : ""),
+
+  // Number of characters of the orchestrator's raw answer to print to
+  // the console for debugging citation/markdown issues. Set to 0 to
+  // disable. Default 500.
+  rawAnswerLogChars: parseInt(process.env.RAW_ANSWER_LOG_CHARS ?? "500", 10),
 };

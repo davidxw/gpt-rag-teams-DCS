@@ -1,6 +1,7 @@
 import { App } from "@microsoft/teams.apps";
 import { MessageActivity } from "@microsoft/teams.api";
 import { OrchestratorClient } from "./orchestratorClient";
+import { config } from "./config";
 import {
   buildCitationAppearance,
   coerceDataPoints,
@@ -71,9 +72,12 @@ app.on("message", async ({ activity, send }) => {
     }
 
     const answerText = result.answer || "_(no answer returned)_";
-    console.log(
-      `[teamsBot]   raw answer (first 500 chars): ${answerText.slice(0, 500).replace(/\n/g, "\\n")}`
-    );
+    if (config.rawAnswerLogChars > 0) {
+      console.log(
+        `[teamsBot]   raw answer (first ${config.rawAnswerLogChars} chars): ` +
+          answerText.slice(0, config.rawAnswerLogChars).replace(/\n/g, "\\n")
+      );
+    }
 
     // Convert orchestrator `[file][PageN][title]` markers into Teams-native
     // citations: rewrite the inline markers to `[N]` and attach a
