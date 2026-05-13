@@ -1,51 +1,22 @@
-import * as restify from "restify";
-import {
-  CloudAdapter,
-  ConfigurationBotFrameworkAuthentication,
-  ConfigurationServiceClientCredentialFactory,
-} from "botbuilder";
-
-import { app } from "./teamsBot";
+// Loading config first ensures the env-var bridge in ./config runs before
+// the Teams SDK App tries to read CLIENT_ID / CLIENT_SECRET / TENANT_ID.
 import { config } from "./config";
+import { app } from "./teamsBot";
 
-const credentialsFactory = new ConfigurationServiceClientCredentialFactory({
-  MicrosoftAppType: config.botType,
-  MicrosoftAppId: config.botId,
-  MicrosoftAppPassword: config.botPassword,
-  MicrosoftAppTenantId: config.botTenantId,
+async function main(): Promise<void> {
+  // The Teams SDK App from `@microsoft/teams.apps` hosts its own HTTP
+  // server and exposes the bot messaging endpoint at POST /api/messages
+  // automatically. This is what the Azure Bot Service registration's
+  // `messagingEndpoint` must point at, e.g.
+  //   https://<your-app-service>.azurewebsites.net/api/messages
+  await app.start(config.port);
+  console.log(
+    `gpt-rag-teams listening on http://localhost:${config.port} (POST /api/messages)`
+  );
+}
+
+main().catch((err) => {
+  console.error("[index] Fatal startup error:", err);
+  process.exit(1);
 });
 
-const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication(
-  {},
-  credentialsFactory
-);
-
-const adapter = new CloudAdapter(botFrameworkAuthentication);
-
-adapter.onTurnError = async (context, error) => {
-  console.error("[adapter] Turn error:", error);
-  await context.sendActivity("The bot encountered an error.");
-};
-
-const server = restify.createServer({ name: "gpt-rag-teams" });
-server.use(restify.plugins.bodyParser());
-
-// Liveness/readiness probe (used by App Service health checks).
-server.get("/healthz", (_req, res, next) => {
-  res.send(200, { status: "ok" });
-  return next();
-});
-
-// Bot Framework messaging endpoint. This is what the Azure Bot Service
-// registration's `messagingEndpoint` must point at, e.g.
-//   https://<your-app-service>.azurewebsites.net/api/messages
-server.post("/api/messages", async (req, res) => {
-  await adapter.process(req, res, async (context) => {
-    await app.run(context);
-  });
-});
-
-server.listen(config.port, () => {
-  console.log(`gpt-rag-teams listening on http://localhost:${config.port}`);
-  console.log(`Messaging endpoint: POST /api/messages`);
-});

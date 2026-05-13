@@ -45,12 +45,19 @@ flag and document the minimum orchestrator version required.
 
 ## Architecture & key files
 
-* [`src/index.ts`](../src/index.ts) — restify server + Bot Framework
-  `CloudAdapter`. Endpoints: `POST /api/messages`, `GET /healthz`.
-* [`src/teamsBot.ts`](../src/teamsBot.ts) — Teams AI `Application` with a
-  single `message` activity handler. Persists the orchestrator-issued
-  `conversation_id` per Teams conversation in `state.conversation` so
-  multi-turn context is preserved server-side in CosmosDB.
+* [`src/index.ts`](../src/index.ts) — thin bootstrap that calls
+  `await app.start(config.port)` on the Teams SDK `App`. The SDK hosts
+  its own HTTP server and exposes `POST /api/messages` automatically.
+  There is no longer a custom `/healthz` route.
+* [`src/teamsBot.ts`](../src/teamsBot.ts) — Teams SDK `App` from
+  `@microsoft/teams.apps` with a single `app.on('message', …)` handler.
+  Persists the orchestrator-issued `conversation_id` per Teams
+  conversation in an in-process `Map<string,string>` keyed by
+  `activity.conversation.id` so multi-turn context is preserved
+  server-side in CosmosDB. Replies are sent as
+  `new MessageActivity(answer).addAiGenerated()` so Teams renders the
+  [AI generated](https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content)
+  label.
 * [`src/orchestratorClient.ts`](../src/orchestratorClient.ts) — typed
   HTTP client. Resolves the function key in this order:
   1. `ORCHESTRATOR_FUNCTION_KEY` env var (dev / static).
@@ -58,7 +65,11 @@ flag and document the minimum orchestrator version required.
      `ChainedTokenCredential(ManagedIdentityCredential, AzureCliCredential)`.
      The key is cached on the instance after first lookup.
 * [`src/config.ts`](../src/config.ts) — env loader. All env access goes
-  through here; do not call `process.env` directly elsewhere.
+  through here; do not call `process.env` directly elsewhere. Also
+  bridges the legacy `MicrosoftAppId`/`MicrosoftAppPassword`/
+  `MicrosoftAppTenantId` names to the Teams SDK's expected
+  `CLIENT_ID`/`CLIENT_SECRET`/`TENANT_ID` so existing App Service
+  settings keep working.
 * [`appPackage/manifest.json`](../appPackage/manifest.json) — Teams app
   manifest, schema **v1.19**. Toolkit placeholders `${{TEAMS_APP_ID}}`
   and `${{BOT_ID}}` are filled in by `teamsApp/create` /
@@ -68,9 +79,13 @@ flag and document the minimum orchestrator version required.
 
 * **Node 20**, TypeScript strict, `commonjs` modules, ES2022 target.
   Output to `./dist`. Source under `./src`. Do not add ESM-only deps.
-* Bot SDK: `botbuilder` ^4.23, `@microsoft/teams-ai` ^1.7. Keep handlers
-  small and put any logic worth testing in plain functions.
-* HTTP server: `restify` ^11. Don't swap to Express without a reason.
+* Teams SDK (the renamed Teams AI library v2): `@microsoft/teams.apps`
+  for the `App` class, `@microsoft/teams.api` for `MessageActivity` and
+  related activity types, `@microsoft/teams.common` for logging. **Do
+  not** reintroduce `@microsoft/teams-ai` or `botbuilder` — those are
+  the deprecated v1 stack.
+* The Teams SDK `App` hosts its own HTTP server. Don't add restify /
+  Express / a `CloudAdapter` wrapper; just call `await app.start(port)`.
 * Azure auth: `@azure/identity` ^4, always via `ChainedTokenCredential`
   so the same code path works locally (`az login`) and in Azure (MI).
 * Use the global `fetch` (Node 20 built-in). Do not add `node-fetch` /
@@ -91,18 +106,22 @@ flag and document the minimum orchestrator version required.
 
 ## Deferred features (do not add unless asked)
 
-The first-cut implementation deliberately covers chat round-trip only.
-The following are planned and tracked in
+The current implementation covers chat round-trip + the Teams
+[AI generated](https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content)
+label. The following are planned and tracked in
 `../GPT-RAG-DCS/.research/teams-integration-review.html`. Don't preempt
 them — they each have design considerations:
 
-* Streaming responses via `streamingResponse` (requires orchestrator
-  changes; not available in v1.0.1).
-* Citations rendered as adaptive-card source chips from `data_points`.
-* AI-generated content label + 👍/👎 feedback loop.
+* Streaming responses via the Teams SDK `stream` helper (requires
+  orchestrator changes; not available in v1.0.1).
+* Citations rendered via `MessageActivity.addCitation(...)` from
+  `data_points`.
+* 👍/👎 feedback loop.
 * SSO + on-behalf-of for per-user document trimming (uses `access_token`
   field on the orchestrator request — also not in v1.0.1).
 * Proactive notifications (subscription updates, ingestion completions).
+* Restoring a `/healthz` endpoint (the Teams SDK App doesn't expose one
+  by default; would need a plugin or sidecar).
 
 ## When making changes
 

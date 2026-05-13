@@ -14,16 +14,34 @@ function required(name: string): string {
   return v;
 }
 
+// --- Teams SDK env-var bridge ---------------------------------------------
+// The new Teams SDK (`@microsoft/teams.apps`, replacing the deprecated
+// `@microsoft/teams-ai` v1 / "Teams AI library") reads bot identity from
+// CLIENT_ID / CLIENT_SECRET / TENANT_ID env vars. Existing App Service
+// settings provisioned by the parent GPT-RAG accelerator still use the
+// legacy MicrosoftApp* names, so we forward them here to keep both worlds
+// working without re-provisioning.
+//
+// See: https://learn.microsoft.com/microsoftteams/platform/teams-sdk/essentials/app-authentication
+function bridge(target: string, fallback: string): void {
+  if (!process.env[target] && process.env[fallback]) {
+    process.env[target] = process.env[fallback];
+  }
+}
+bridge("CLIENT_ID", "MicrosoftAppId");
+bridge("CLIENT_SECRET", "MicrosoftAppPassword");
+bridge("TENANT_ID", "MicrosoftAppTenantId");
+
 export const config = {
   port: parseInt(process.env.PORT ?? "3978", 10),
 
-  // --- Bot identity ---
-  // Local dev:    MicrosoftAppType=MultiTenant + MicrosoftAppId + MicrosoftAppPassword
-  // Production:   MicrosoftAppType=UserAssignedMSI + MicrosoftAppId=<MI client id> + MicrosoftAppTenantId
-  botType: optional("MicrosoftAppType") || "MultiTenant",
-  botId: optional("MicrosoftAppId"),
-  botPassword: optional("MicrosoftAppPassword"),
-  botTenantId: optional("MicrosoftAppTenantId"),
+  // --- Bot identity (Teams SDK reads these directly from env) -------------
+  // Local dev:  CLIENT_ID + CLIENT_SECRET + TENANT_ID (client-secret auth).
+  // Production: CLIENT_ID + TENANT_ID with the Web App's user-assigned
+  //             managed identity attached (passwordless / UMI auth).
+  clientId: optional("CLIENT_ID"),
+  clientSecret: optional("CLIENT_SECRET"),
+  tenantId: optional("TENANT_ID"),
 
   // --- Orchestrator ---
   // Full URL of the orchestrator HTTP function, e.g.

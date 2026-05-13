@@ -1,37 +1,41 @@
-import { MemoryStorage, TurnContext } from "botbuilder";
-import { Application, TurnState } from "@microsoft/teams-ai";
+import { App } from "@microsoft/teams.apps";
+import { MessageActivity } from "@microsoft/teams.api";
 import { OrchestratorClient } from "./orchestratorClient";
 
-interface ConversationData {
-  /** UUID returned by the orchestrator on the first turn; reused thereafter. */
-  orchestratorConversationId?: string;
-}
-
-type AppTurnState = TurnState<ConversationData>;
-
-const storage = new MemoryStorage();
+/**
+ * Per-Teams-conversation map of the orchestrator-issued `conversation_id`.
+ *
+ * The orchestrator (CosmosDB-backed) is the source of truth for the actual
+ * conversation history; we only need to remember the id so subsequent
+ * turns continue the same server-side conversation.
+ *
+ * NOTE: This is in-process memory only — same volatility as the previous
+ * `MemoryStorage`-backed implementation. Conversations restart after a
+ * pod/app restart. Move to a durable store (Azure Tables / Cosmos / Redis)
+ * if longer continuity is required.
+ */
+const orchestratorConvByTeamsConv = new Map<string, string>();
 const orchestrator = new OrchestratorClient();
 
-export const app = new Application<AppTurnState>({
-  storage,
-});
+export const app = new App();
 
-app.activity("message", async (context: TurnContext, state: AppTurnState) => {
-  const text = (context.activity.text ?? "").trim();
+app.on("message", async ({ activity, send }) => {
+  const text = (activity.text ?? "").trim();
   if (!text) {
     return;
   }
 
-  const userId =
-    context.activity.from?.aadObjectId ?? context.activity.from?.id ?? "";
-  const userName = context.activity.from?.name ?? "";
+  const teamsConvId = activity.conversation?.id ?? "";
+  const userId = activity.from?.aadObjectId ?? activity.from?.id ?? "";
+  const userName = activity.from?.name ?? "";
 
   // Show the typing indicator while the orchestrator runs.
-  await context.sendActivities([{ type: "typing" }]);
+  // `send` accepts any IActivity-shaped payload; typing has no payload.
+  await send({ type: "typing" } as any);
 
   try {
     const result = await orchestrator.ask({
-      conversation_id: state.conversation.orchestratorConversationId,
+      conversation_id: orchestratorConvByTeamsConv.get(teamsConvId),
       question: text,
       client_principal_id: userId,
       client_principal_name: userName,
@@ -40,19 +44,28 @@ app.activity("message", async (context: TurnContext, state: AppTurnState) => {
 
     // Persist the orchestrator-issued conversation id so subsequent turns
     // continue the same conversation in CosmosDB.
-    state.conversation.orchestratorConversationId = result.conversation_id;
+    if (teamsConvId && result.conversation_id) {
+      orchestratorConvByTeamsConv.set(teamsConvId, result.conversation_id);
+    }
 
-    await context.sendActivity(result.answer || "_(no answer returned)_");
+    // Per Teams guidance for AI-generated bot messages, surface the
+    // "AI generated" label on every answer:
+    //   https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content
+    const reply = new MessageActivity(
+      result.answer || "_(no answer returned)_"
+    ).addAiGenerated();
+
+    await send(reply);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[teamsBot] Orchestrator call failed:", msg);
-    await context.sendActivity(
+    await send(
       "Sorry — I couldn't reach the GPT-RAG orchestrator. Please try again in a moment."
     );
   }
 });
 
-app.error(async (context, error) => {
+app.event("error", ({ error }) => {
   console.error("[teamsBot] Unhandled error:", error);
-  await context.sendActivity("Something went wrong. Please try again.");
 });
+
