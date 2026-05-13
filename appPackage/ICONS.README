@@ -1,0 +1,8 @@
+# Place two PNG icons in this folder before packaging the Teams app:
+#
+#   color.png    - 192x192, full-color brand mark
+#   outline.png  - 32x32,  transparent, white outline only
+#
+# These are referenced by appPackage/manifest.json and are required by
+# Teams when sideloading or submitting the app. The Microsoft 365 Agents
+# Toolkit can generate placeholders for you ("Teams: Add icons" command).

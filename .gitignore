@@ -141,3 +141,19 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# --- gpt-rag-teams ---
+# Compiled TypeScript output
+dist/
+
+# M365 Agents Toolkit local secrets
+env/.env.*.user
+.localConfigs
+
+# Teams app package build artifacts
+appPackage/build/
+
+# OS junk
+.DS_Store
+Thumbs.db
+

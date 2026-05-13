@@ -1,0 +1,32 @@
+{
+  "name": "gpt-rag-teams",
+  "version": "0.1.0",
+  "description": "Teams chat interface for the GPT-RAG Solution Accelerator orchestrator.",
+  "private": true,
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "lint": "tsc --noEmit",
+    "package:teams": "pwsh ./scripts/package-teams-app.ps1"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.4.0",
+    "@microsoft/teams-ai": "^1.7.0",
+    "botbuilder": "^4.23.0",
+    "dotenv": "^16.4.5",
+    "restify": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/restify": "^8.5.12",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.0"
+  }
+}
