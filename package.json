@@ -1,31 +1,47 @@
 {
-  "name": "gpt-rag-teams",
-  "version": "0.1.0",
-  "description": "Teams chat interface for the GPT-RAG Solution Accelerator orchestrator.",
-  "private": true,
-  "license": "MIT",
-  "type": "commonjs",
-  "engines": {
-    "node": ">=18"
-  },
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "start": "node ./dist/index.js",
-    "dev": "tsx watch src/index.ts",
-    "lint": "tsc --noEmit",
-    "package:teams": "pwsh ./scripts/package-teams-app.ps1"
-  },
-  "dependencies": {
-    "@azure/identity": "^4.4.0",
-    "@microsoft/teams.api": "^2.0.0",
-    "@microsoft/teams.apps": "^2.0.0",
-    "@microsoft/teams.common": "^2.0.0",
-    "dotenv": "^16.4.5"
-  },
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "tsx": "^4.16.2",
-    "typescript": "^5.5.0"
-  }
+    "name": "testteamagent",
+    "version": "1.0.0",
+    "msteams": {
+        "teamsAppId": null
+    },
+    "description": "Microsoft 365 Agents Toolkit AI Chat Agent Sample with Microsoft Teams SDK",
+    "engines": {
+        "node": "20 || 22"
+    },
+    "author": "Microsoft",
+    "license": "MIT",
+    "main": "./lib/src/index.js",
+    "scripts": {
+        "dev:teamsfx": "env-cmd --silent -f .localConfigs npm run dev",
+        "dev:teamsfx:playground": "env-cmd --silent -f .localConfigs.playground npm run dev",
+        "dev:teamsfx:launch-playground": "env-cmd --silent -f env/.env.playground agentsplayground start",
+        "dev": "nodemon --exec node --inspect=9239 --signal SIGINT -r ts-node/register ./src/index.ts",
+        "build": "tsc --build && shx cp -r ./src/app/instructions.txt ./lib/src/app",
+        "start": "node ./lib/src/index.js",
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "watch": "nodemon --exec \"npm run start\""
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com"
+    },
+    "dependencies": {
+        "@azure/identity": "^4.11.1",
+        "@microsoft/teams.ai": "^2.0.0",
+        "@microsoft/teams.apps": "^2.0.0",
+        "@microsoft/teams.common": "^2.0.0",
+        "@microsoft/teams.openai": "^2.0.0",
+        "dotenv": "^17.4.2"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "env-cmd": "^10.1.0",
+        "nodemon": "^3.1.7",
+        "shx": "^0.4.0",
+        "ts-node": "^10.4.0",
+        "typescript": "~5.8.3"
+    },
+    "overrides": {
+        "formdata-node": "6.0.3"
+    }
 }

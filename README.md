@@ -1,123 +1,62 @@
-# gpt-rag-teams
+# Overview of the Basic AI Chatbot template
 
-A Microsoft Teams bot front-end for the [GPT-RAG Solution Accelerator](https://github.com/davidxw/GPT-RAG-DCS).
+This app template is built on top of [Microsoft Teams SDK](https://aka.ms/teams-ai-library-v2).
+It showcases an agent app that responds to user questions like ChatGPT. This enables your users to talk with the AI agent in Teams.
 
-The bot is intentionally thin: it forwards each user turn to the GPT-RAG
-**orchestrator** Function App (`POST /api/orc`) and renders the answer back
-into Teams. All retrieval, prompting, content filtering, and conversation
-persistence are handled by the orchestrator, exactly as for the existing web
-front-end.
+## Get started with the template
 
-## Architecture
+> **Prerequisites**
+>
+> To run the template in your local dev machine, you will need:
+>
+> - [Node.js](https://nodejs.org/), supported versions: 20, 22.
+> - [Microsoft 365 Agents Toolkit Visual Studio Code Extension](https://aka.ms/teams-toolkit) latest version or [Microsoft 365 Agents Toolkit CLI](https://aka.ms/teamsfx-toolkit-cli).
+> - Prepare your own [Azure OpenAI](https://aka.ms/oai/access) resource.
 
-```
-Teams client ──► Bot Service ──► gpt-rag-teams (this repo)
-                                          │
-                                          ▼
-                              POST /api/orc  (x-functions-key)
-                                          │
-                                          ▼
-                     gpt-rag-orchestrator (Azure Functions)
-                                          │
-                                          ▼
-                       Azure OpenAI · AI Search · CosmosDB
-```
+> For local debugging using Microsoft 365 Agents Toolkit CLI, you need to do some extra steps described in [Set up your Microsoft 365 Agents Toolkit CLI for local debugging](https://aka.ms/teamsfx-cli-debugging).
 
-* `src/index.ts` — bootstraps the Teams SDK [`App`](https://learn.microsoft.com/microsoftteams/platform/teams-sdk/essentials/on-activity/overview)
-  from `@microsoft/teams.apps`, which hosts its own HTTP server and exposes
-  `POST /api/messages` automatically.
-* `src/teamsBot.ts` — single `app.on('message', …)` handler that calls the
-  orchestrator, persists the orchestrator-issued `conversation_id` per Teams
-  conversation (in-memory `Map`) so multi-turn context continues in CosmosDB,
-  and replies with a `MessageActivity(...).addAiGenerated()` so Teams renders
-  the [AI generated](https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content)
-  label on every answer.
-* `src/orchestratorClient.ts` — typed HTTP client. In Azure it uses the
-  bot's user-assigned managed identity to call ARM `listKeys` and fetch
-  the orchestrator's function key (mirrors the `gpt-rag-frontend` pattern).
-* `appPackage/manifest.json` — Teams app manifest (schema v1.19).
+1. First, select the Microsoft 365 Agents Toolkit icon on the left in the VS Code toolbar.
+1. In file *env/.env.playground.user*, fill in your Azure OpenAI key `SECRET_AZURE_OPENAI_API_KEY=<your-key>`, endpoint `AZURE_OPENAI_ENDPOINT=<your-endpoint>`, and deployment name `AZURE_OPENAI_DEPLOYMENT_NAME=<your-deployment>`.
+1. Press F5 to start debugging which launches your app in Microsoft 365 Agents Playground using a web browser. Select `Debug in Microsoft 365 Agents Playground`.
+1. You can send any message to get a response from the agent.
 
-## Prerequisites
+**Congratulations**! You are running an application that can now interact with users in Microsoft 365 Agents Playground:
 
-* Node.js **20** and npm.
-* A deployed GPT-RAG orchestrator Function App (or run locally on
-  `http://localhost:7071`).
-* For local Teams testing: the
-  [Microsoft 365 Agents Toolkit](https://aka.ms/teams-toolkit) VS Code
-  extension (or the Bot Framework Emulator).
-* For sideloading: two icons in `appPackage/`:
-  * `color.png` — 192×192
-  * `outline.png` — 32×32 (transparent background, white outline)
+![Basic AI Chatbot](https://github.com/user-attachments/assets/984af126-222b-4c98-9578-0744790b103a)
 
-## Local development
+## What's included in the template
 
-```pwsh
-npm install
-copy .env.example .env       # then fill in the values
-npm run dev                  # ts-node-dev with reload
-```
+| Folder       | Contents                                            |
+| - | - |
+| `.vscode`    | VSCode files for debugging                          |
+| `appPackage` | Templates for the application manifest        |
+| `env`        | Environment files                                   |
+| `infra`      | Templates for provisioning Azure resources          |
+| `src`        | The source code for the application                 |
 
-Required `.env` values for a minimal local run:
+The following files can be customized and demonstrate an example implementation to get you started.
 
-| Variable | Notes |
-| --- | --- |
-| `ORCHESTRATOR_ENDPOINT` | e.g. `http://localhost:7071/api/orc` |
-| `ORCHESTRATOR_FUNCTION_KEY` | Empty if running orchestrator locally with `authLevel=anonymous` for dev. |
-| `CLIENT_ID` / `CLIENT_SECRET` / `TENANT_ID` | Teams SDK bot identity. The legacy `MicrosoftAppId` / `MicrosoftAppPassword` / `MicrosoftAppTenantId` names are also accepted (bridged in `src/config.ts`). |
+| File                                 | Contents                                           |
+| - | - |
+|`src/index.ts`| Application entry point. |
+|`src/config.ts`| Defines the environment variables.|
+|`src/app/instructions.txt`| Defines the prompt.|
+|`src/app/app.ts`| Handles business logics for the Basic AI Chatbot.|
 
-The Teams SDK auto-detects the auth method from these env vars (client
-secret, user-assigned MI, or federated identity); see the
-[App Authentication reference](https://learn.microsoft.com/microsoftteams/platform/teams-sdk/essentials/app-authentication).
+The following are Microsoft 365 Agents Toolkit specific project files. You can [visit a complete guide on Github](https://github.com/OfficeDev/TeamsFx/wiki/Teams-Toolkit-Visual-Studio-Code-v5-Guide#overview) to understand how Microsoft 365 Agents Toolkit works.
 
-Test in the **Bot Framework Emulator** by pointing it at
-`http://localhost:3978/api/messages` and the AAD app credentials above.
+| File                                 | Contents                                           |
+| - | - |
+|`m365agents.yml`|This is the main Microsoft 365 Agents Toolkit project file. The project file defines two primary things:  Properties and configuration Stage definitions. |
+|`m365agents.local.yml`|This overrides `m365agents.yml` with actions that enable local execution and debugging.|
+|`m365agents.playground.yml`| This overrides `m365agents.yml` with actions that enable local execution and debugging in Microsoft 365 Agents Playground.|
 
-## Build & package the Teams app
+## Extend the template
 
-```pwsh
-npm run build                 # tsc -> ./dist
-npm run package:teams         # zips appPackage/ into appPackage/build/appPackage.dev.zip
-```
+To extend the Basic AI Chatbot template with more AI capabilities, explore [Microsoft Teams SDK documentation](https://aka.ms/m365-agents-toolkit/teams-agent-extend-ai).
 
-Sideload the resulting zip into Teams via **Apps → Manage your apps → Upload an app**.
+## Additional information and references
 
-## Production deployment
-
-This repo deliberately does **not** carry its own Bicep/azd infrastructure.
-The hosting App Service (or Container App), user-assigned managed identity,
-and Bot Service registration are provisioned by the parent
-[GPT-RAG accelerator](https://github.com/davidxw/GPT-RAG-DCS) — add a
-`teamsBot` service entry to its `azure.yaml` and run `azd deploy teamsBot`.
-
-The bot expects these App Service application settings (typically Key Vault
-references):
-
-* `CLIENT_ID=<MI client id>` *(or the legacy `MicrosoftAppId`)*
-* `TENANT_ID=<tenant id>` *(or the legacy `MicrosoftAppTenantId`)*
-* `CLIENT_SECRET=` left **empty** when using user-assigned MI
-* `ORCHESTRATOR_ENDPOINT=https://<orchestrator-funcapp>.azurewebsites.net/api/orc`
-* `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP_NAME`, `AZURE_ORCHESTRATOR_FUNC_NAME`
-  — used by managed identity to fetch the orchestrator function key at runtime.
-
-The bot's MI must have **Contributor** (or a custom role with
-`Microsoft.Web/sites/functions/listKeys/action`) on the orchestrator Function App.
-
-> **Note on `/healthz`:** the previous restify-based server exposed a custom
-> `GET /healthz` probe. The Teams SDK App hosts its own HTTP server and
-> doesn't currently expose that route. Configure the App Service health
-> check at TCP level, or remove the explicit health-check requirement.
-
-## Roadmap
-
-The current implementation covers the chat round-trip plus the Teams
-[AI generated](https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content)
-label on every reply. Planned follow-ups (tracked in
-`../GPT-RAG-DCS/.research/teams-integration-review.html`):
-
-* Streaming responses via the Teams SDK `stream` helper (requires an
-  orchestrator that supports incremental output).
-* Citations rendered via `MessageActivity.addCitation(...)` from
-  orchestrator `data_points`.
-* 👍/👎 feedback loop wired into the orchestrator's eval pipeline.
-* SSO + on-behalf-of for per-user document trimming.
-* Proactive notifications (subscription updates, ingestion completions).
+- [Microsoft 365 Agents Toolkit Documentations](https://docs.microsoft.com/microsoftteams/platform/toolkit/teams-toolkit-fundamentals)
+- [Microsoft 365 Agents Toolkit CLI](https://aka.ms/teamsfx-toolkit-cli)
+- [Microsoft 365 Agents Toolkit Samples](https://github.com/OfficeDev/TeamsFx-Samples)

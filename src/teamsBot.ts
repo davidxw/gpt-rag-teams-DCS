@@ -42,20 +42,20 @@ app.on("message", async ({ activity, send }) => {
       client_group_names: "",
     });
 
+    console.log("[teamsBot] Orchestrator result:", JSON.stringify(result));
+
     // Persist the orchestrator-issued conversation id so subsequent turns
     // continue the same conversation in CosmosDB.
     if (teamsConvId && result.conversation_id) {
       orchestratorConvByTeamsConv.set(teamsConvId, result.conversation_id);
     }
 
-    // Per Teams guidance for AI-generated bot messages, surface the
-    // "AI generated" label on every answer:
-    //   https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content
-    const reply = new MessageActivity(
-      result.answer || "_(no answer returned)_"
-    ).addAiGenerated();
+    const answerText = result.answer || "_(no answer returned)_";
+    console.log("[teamsBot] Sending answer:", answerText.slice(0, 200));
 
-    await send(reply);
+    // Send a plain string first to verify the round-trip works,
+    // then we can re-introduce MessageActivity + addAiGenerated().
+    await send(answerText);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[teamsBot] Orchestrator call failed:", msg);
