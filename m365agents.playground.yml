@@ -22,3 +22,4 @@ deploy:
       target: ./.localConfigs.playground
       envs:
         ORCHESTRATOR_ENDPOINT: ${{ORCHESTRATOR_ENDPOINT}}
+        STORAGE_ACCOUNT: ${{STORAGE_ACCOUNT}}

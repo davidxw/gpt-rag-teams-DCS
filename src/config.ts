@@ -60,4 +60,27 @@ export const config = {
   azureSubscriptionId: optional("AZURE_SUBSCRIPTION_ID"),
   azureResourceGroup: optional("AZURE_RESOURCE_GROUP_NAME"),
   azureOrchestratorFuncName: optional("AZURE_ORCHESTRATOR_FUNC_NAME"),
+
+  // --- Citations / document viewing -------------------------------------
+  // Storage account name that holds the source documents. The bot reads
+  // blobs directly using its managed identity (DefaultAzureCredential) and
+  // exposes them via GET /api/documents. Citation URLs point back to the
+  // bot, never to storage. Leave blank to disable click-through.
+  //
+  // Required role on the storage account: `Storage Blob Data Reader` for
+  // the bot's user-assigned managed identity.
+  storageAccount: optional("STORAGE_ACCOUNT"),
+
+  // Container that holds the documents. Defaults to `documents` to match
+  // the GPT-RAG accelerator convention.
+  storageContainer: process.env.STORAGE_CONTAINER || "documents",
+
+  // Public host (no scheme) used to build absolute citation URLs back to
+  // this bot's GET /api/documents endpoint. Auto-populated from common
+  // hosts: BOT_DOMAIN (Toolkit local dev tunnel) → WEBSITE_HOSTNAME
+  // (Azure App Service). Override with BOT_BASE_URL if needed.
+  botBaseUrl:
+    process.env.BOT_BASE_URL ||
+    (process.env.BOT_DOMAIN ? `https://${process.env.BOT_DOMAIN}` : "") ||
+    (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : ""),
 };

@@ -5,6 +5,15 @@ param resourceBaseName string
 
 param orchestratorEndpoint string
 
+@description('Optional. Storage account name that holds source documents. The bot streams blobs via its UMI through GET /api/documents. Leave empty to disable.')
+param storageAccountName string = ''
+
+@description('Optional. Resource group containing the storage account. Defaults to the current resource group.')
+param storageAccountResourceGroup string = resourceGroup().name
+
+@description('Optional. Container name within the storage account that holds documents.')
+param storageContainerName string = 'documents'
+
 param webAppSKU string
 
 @maxLength(42)
@@ -69,6 +78,14 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
           name: 'ORCHESTRATOR_ENDPOINT'
           value: orchestratorEndpoint
         }
+        {
+          name: 'STORAGE_ACCOUNT'
+          value: storageAccountName
+        }
+        {
+          name: 'STORAGE_CONTAINER'
+          value: storageContainerName
+        }
       ]
       ftpsState: 'FtpsOnly'
     }
@@ -99,3 +116,16 @@ output BOT_AZURE_APP_SERVICE_RESOURCE_ID string = webApp.id
 output BOT_DOMAIN string = webApp.properties.defaultHostName
 output BOT_ID string = identity.properties.clientId
 output BOT_TENANT_ID string = identity.properties.tenantId
+
+// --- Document storage RBAC ----------------------------------------------
+// Grant the bot's user-assigned managed identity `Storage Blob Data Reader`
+// on the documents storage account so /api/documents can stream blobs
+// without keys or SAS. Assignment is conditional on storageAccountName.
+module storageRoleAssignment './storageRoleAssignment.bicep' = if (!empty(storageAccountName)) {
+  name: 'doc-storage-blob-reader'
+  scope: resourceGroup(storageAccountResourceGroup)
+  params: {
+    storageAccountName: storageAccountName
+    principalId: identity.properties.principalId
+  }
+}

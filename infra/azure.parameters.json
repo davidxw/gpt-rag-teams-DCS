@@ -8,6 +8,9 @@
     "orchestratorEndpoint": {
       "value": "${{ORCHESTRATOR_ENDPOINT}}"
     },
+    "storageAccountName": {
+      "value": "${{STORAGE_ACCOUNT}}"
+    },
     "webAppSKU": {
       "value": "B1"
     },

@@ -2,8 +2,13 @@
 // the Teams SDK App tries to read CLIENT_ID / CLIENT_SECRET / TENANT_ID.
 import { config } from "./config";
 import { app } from "./teamsBot";
+import { registerDocumentRoute } from "./documentRoute";
 
 async function main(): Promise<void> {
+  // Register the bot-hosted document proxy BEFORE app.start() so the
+  // route is wired into the underlying Express adapter ahead of binding.
+  registerDocumentRoute(app);
+
   // The Teams SDK App from `@microsoft/teams.apps` hosts its own HTTP
   // server and exposes the bot messaging endpoint at POST /api/messages
   // automatically. This is what the Azure Bot Service registration's

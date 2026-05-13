@@ -15,10 +15,25 @@ export interface OrchestratorRequest {
   client_group_names?: string;
 }
 
+export interface OrchestratorDataPoint {
+  /** Source filename, e.g. "ResidentialTenancyAct-2010-042.pdf". */
+  fileName?: string;
+  /** Document title surfaced in the orchestrator answer markers. */
+  title?: string;
+  /** Page number the chunk came from (1-based). */
+  page?: number;
+  /** Chunk text used to ground the LLM answer. */
+  content?: string;
+  /** Optional pre-built link to the source. */
+  url?: string;
+  /** Tolerate any other fields the orchestrator might emit. */
+  [key: string]: unknown;
+}
+
 export interface OrchestratorResponse {
   conversation_id: string;
   answer: string;
-  data_points?: unknown;
+  data_points?: OrchestratorDataPoint[] | unknown;
   thoughts?: string;
 }
 

@@ -93,10 +93,17 @@ flag and document the minimum orchestrator version required.
 
 ## What this bot must NOT do
 
-* Do not call Azure OpenAI, AI Search, CosmosDB, Storage, or any
-  knowledge source directly. Everything goes through the orchestrator.
-* Do not implement its own prompt engineering, content filtering, RAI,
-  or citation rendering logic. The orchestrator owns these.
+* Do not call Azure OpenAI, AI Search, CosmosDB, or any knowledge
+  source directly. Everything goes through the orchestrator. The bot
+  *does* read source documents directly from Azure Blob Storage via
+  its managed identity — see `src/documentRoute.ts` — so that Teams
+  citation links can resolve to a bot-hosted endpoint instead of
+  exposing storage URLs / SAS tokens to clients.
+* Do not implement its own prompt engineering, content filtering, RAI
+  logic, or chunk retrieval. The orchestrator owns these. The bot
+  *does* own translation of orchestrator citation markers
+  (`[file][PageN][title]`) into Teams `MessageActivity.addCitation(...)`
+  calls — that lives in `src/citations.ts`.
 * Do not embed secrets, tenant ids, or function keys in source. Local
   dev uses `.env` (gitignored); Azure uses App Service settings backed
   by Key Vault references.
@@ -106,22 +113,32 @@ flag and document the minimum orchestrator version required.
 
 ## Deferred features (do not add unless asked)
 
-The current implementation covers chat round-trip + the Teams
+The current implementation covers chat round-trip, the Teams
 [AI generated](https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content)
-label. The following are planned and tracked in
+label, and citations (in-text `[N]` markers + pop-up cards + dev-preview
+modal Adaptive Card with the source excerpt). Citation click-through
+resolves to `GET /api/documents?name={blob}` on the bot itself, which
+streams the blob from `STORAGE_ACCOUNT` using `DefaultAzureCredential`
+(no keys, no SAS). The route is registered via `app.server.adapter`
+(Express passthrough); see `src/documentRoute.ts`. The following are
+planned and tracked in
 `../GPT-RAG-DCS/.research/teams-integration-review.html`. Don't preempt
 them — they each have design considerations:
 
 * Streaming responses via the Teams SDK `stream` helper (requires
   orchestrator changes; not available in v1.0.1).
-* Citations rendered via `MessageActivity.addCitation(...)` from
-  `data_points`.
+* Authentication on `GET /api/documents` (currently anonymous; add
+  Easy Auth or HMAC-signed URLs before exposing externally).
+* HTTP `Range` support on the document endpoint for large-PDF seeking.
 * 👍/👎 feedback loop.
 * SSO + on-behalf-of for per-user document trimming (uses `access_token`
   field on the orchestrator request — also not in v1.0.1).
 * Proactive notifications (subscription updates, ingestion completions).
 * Restoring a `/healthz` endpoint (the Teams SDK App doesn't expose one
   by default; would need a plugin or sidecar).
+* Personal-tab document viewer (PDF.js) for richer in-Teams source
+  rendering. Today the citation `url` opens externally; the modal
+  Adaptive Card carries an `Action.OpenUrl` to the same URL.
 
 ## When making changes
 
