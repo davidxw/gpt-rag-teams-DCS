@@ -80,9 +80,16 @@ app.on("message", async ({ activity, send }) => {
     return;
   }
 
-  // Show the typing indicator while the orchestrator runs.
-  // `send` accepts any IActivity-shaped payload; typing has no payload.
+  // Show the typing indicator while the orchestrator runs. Teams expires
+  // a typing indicator after ~10s, so we resend it every 4s until the
+  // reply is on its way. `send` accepts any IActivity-shaped payload;
+  // typing has no payload.
   await send({ type: "typing" } as any);
+  const typingInterval = setInterval(() => {
+    send({ type: "typing" } as any).catch(() => {
+      /* swallow transient channel errors — typing is best-effort */
+    });
+  }, 4000);
 
   try {
     console.log(`[teamsBot] → orchestrator.ask (conv=${existingOrchConvId ?? "(new)"})`);
@@ -180,14 +187,42 @@ app.on("message", async ({ activity, send }) => {
       `[teamsBot] ✓ reply sent | total=${Date.now() - startedAt}ms | teamsConv=${teamsConvId} | botMsgId=${sent?.id ?? "(none)"}`
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    // Native `fetch` wraps the underlying network error in a generic
+    // `TypeError: fetch failed`, putting the real reason on `.cause`
+    // (and sometimes nested `.cause.cause` for DNS / TLS issues).
+    // Surface as much detail as we can to the log.
+    const parts: string[] = [];
+    if (err instanceof Error) {
+      parts.push(`${err.name}: ${err.message}`);
+      let cause: unknown = (err as { cause?: unknown }).cause;
+      while (cause) {
+        if (cause instanceof Error) {
+          const code = (cause as { code?: string }).code;
+          parts.push(
+            `caused by ${cause.name}${code ? ` [${code}]` : ""}: ${cause.message}`
+          );
+          cause = (cause as { cause?: unknown }).cause;
+        } else {
+          parts.push(`caused by ${String(cause)}`);
+          cause = undefined;
+        }
+      }
+    } else {
+      parts.push(String(err));
+    }
     console.error(
-      `[teamsBot] ✗ orchestrator call failed (${Date.now() - startedAt}ms):`,
-      msg
+      `[teamsBot] ✗ orchestrator call failed (${Date.now() - startedAt}ms) | ` +
+        `endpoint=${config.orchestratorEndpoint} | conv=${existingOrchConvId ?? "(new)"}: ` +
+        parts.join(" | ")
     );
+    if (err instanceof Error && err.stack) {
+      console.error(`[teamsBot]   stack: ${err.stack}`);
+    }
     await send(
       "Sorry — I couldn't reach the GPT-RAG orchestrator. Please try again in a moment."
     );
+  } finally {
+    clearInterval(typingInterval);
   }
 });
 

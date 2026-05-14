@@ -50,6 +50,82 @@ The following are Microsoft 365 Agents Toolkit specific project files. You can [
 |`m365agents.local.yml`|This overrides `m365agents.yml` with actions that enable local execution and debugging.|
 |`m365agents.playground.yml`| This overrides `m365agents.yml` with actions that enable local execution and debugging in Microsoft 365 Agents Playground.|
 
+## Configuring the orchestrator connection
+
+The bot talks to the GPT-RAG orchestrator (the `orc` Azure Function) and to the
+`feedback` function in the same Function App. Both endpoints require an
+`x-functions-key` header (unless they're set to `authLevel: anonymous`).
+
+### Required variables
+
+| Variable | Purpose |
+| - | - |
+| `ORCHESTRATOR_ENDPOINT` | Full URL to the `orc` function, **including** `/api/orc` (e.g. `https://<funcapp>.azurewebsites.net/api/orc`). The feedback URL is derived by replacing the trailing `/orc` with `/feedback`. |
+| `ORCHESTRATOR_FUNCTION_KEY` | Function or host key for `orc`. Optional if you use the managed-identity fallback below. |
+| `FEEDBACK_FUNCTION_KEY` | Function or host key for `feedback`. Optional if you use the managed-identity fallback below. |
+
+### Optional — managed-identity / ARM `listKeys` fallback
+
+If the static keys above are not set, the bot will look up the keys at runtime
+via ARM `listKeys` using `ChainedTokenCredential(ManagedIdentity, AzureCli)`.
+That requires the bot's identity to have permission to call
+`Microsoft.Web/sites/functions/listKeys/action` on the Function App, plus:
+
+| Variable | Purpose |
+| - | - |
+| `AZURE_SUBSCRIPTION_ID` | Subscription containing the Function App. |
+| `AZURE_RESOURCE_GROUP_NAME` | Resource group of the Function App. |
+| `AZURE_ORCHESTRATOR_FUNC_NAME` | Function App name (shared between `orc` and `feedback`). |
+
+### Local development (Playground / Teams Toolkit)
+
+There are two layers loaded in this order:
+
+1. `env-cmd` reads `.localConfigs` (for Local) or `.localConfigs.playground`
+   (for Playground) — these files are **regenerated on every Toolkit Provision**
+   from `env/.env.local` / `env/.env.playground` via the
+   `file/createOrUpdateEnvironmentFile` action in
+   [`m365agents.local.yml`](m365agents.local.yml) /
+   [`m365agents.playground.yml`](m365agents.playground.yml). Editing
+   `.localConfigs*` directly is fine for a quick test, but the change will be
+   wiped on the next Provision.
+2. `dotenv` then loads `.env` **without overwriting** anything already set.
+
+**Recommended:** put secrets in [`.env`](.env) (gitignored, loaded by `dotenv`,
+shared across both Local and Playground profiles):
+
+```env
+ORCHESTRATOR_FUNCTION_KEY=<key from Function App → orc → Function Keys>
+FEEDBACK_FUNCTION_KEY=<key from Function App → feedback → Function Keys>
+```
+
+Set the endpoint per profile in `env/.env.local` / `env/.env.playground` so it
+follows the Toolkit environment, and re-Provision after changes. Variables that
+must reach the Node process via `env-cmd` also need to be plumbed through the
+`envs:` block in the matching `m365agents.*.yml` — today that block forwards
+`ORCHESTRATOR_ENDPOINT` and `STORAGE_ACCOUNT`. Add new variables there if you
+want them per-profile rather than in `.env`.
+
+### Azure (production)
+
+The bot runs on App Service with a system-assigned managed identity. Configure
+these as **App Settings** (or Key Vault references) on the bot's App Service:
+
+- `ORCHESTRATOR_ENDPOINT` — the production `orc` URL.
+- Either `ORCHESTRATOR_FUNCTION_KEY` + `FEEDBACK_FUNCTION_KEY` (simplest), **or**
+  `AZURE_SUBSCRIPTION_ID` + `AZURE_RESOURCE_GROUP_NAME` +
+  `AZURE_ORCHESTRATOR_FUNC_NAME` and grant the bot's managed identity the
+  `Microsoft.Web/sites/functions/listKeys/action` permission on the Function App
+  (the built-in **Website Contributor** role includes it; a narrower custom role
+  is preferred).
+- `STORAGE_ACCOUNT` — name of the storage account holding source documents.
+  The bot reads blobs via its managed identity, so grant **Storage Blob Data
+  Reader** on that account.
+
+Static keys are easier to set up; managed-identity lookup avoids storing secrets
+and lets the Function App rotate keys without redeploying the bot. The key
+lookup is cached in memory for the lifetime of the process.
+
 ## Extend the template
 
 To extend the Basic AI Chatbot template with more AI capabilities, explore [Microsoft Teams SDK documentation](https://aka.ms/m365-agents-toolkit/teams-agent-extend-ai).
