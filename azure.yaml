@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: azure-gpt-rag
+metadata:
+  template: gpt-rag-teams-DCS@1.0.0
+services:
+    teamsApp:
+      project: "."
+      language: ts
+      host: appservice
+      hooks:
+        prepackage:
+          windows:
+            shell: pwsh
+            run: npm install && npm run build
+          posix:
+            shell: sh
+            run: npm install && npm run build
