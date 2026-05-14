@@ -41,14 +41,6 @@ Terminal -> Run Task -> Start Microsoft 365 Agents Playground
 | `infra`      | Templates for provisioning Azure resources          |
 | `src`        | The source code for the application                 |
 
-The following files can be customized and demonstrate an example implementation to get you started.
-
-| File                                 | Contents                                           |
-| - | - |
-|`src/index.ts`| Application entry point. |
-|`src/config.ts`| Defines the environment variables.|
-|`src/app/instructions.txt`| Defines the prompt.|
-|`src/app/app.ts`| Handles business logics for the Basic AI Chatbot.|
 
 The following are Microsoft 365 Agents Toolkit specific project files. You can [visit a complete guide on Github](https://github.com/OfficeDev/TeamsFx/wiki/Teams-Toolkit-Visual-Studio-Code-v5-Guide#overview) to understand how Microsoft 365 Agents Toolkit works.
 

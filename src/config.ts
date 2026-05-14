@@ -56,6 +56,11 @@ export const config = {
   // (mirrors the pattern used by gpt-rag-frontend).
   orchestratorFunctionKey: optional("ORCHESTRATOR_FUNCTION_KEY"),
 
+  // Optional: a static function key for the `feedback` HTTP function in
+  // the same Function App as `orc`. If omitted, the bot uses its managed
+  // identity to call ARM `listKeys` against the `feedback` function.
+  feedbackFunctionKey: optional("FEEDBACK_FUNCTION_KEY"),
+
   // --- Required only when using MI to fetch the function key ---
   azureSubscriptionId: optional("AZURE_SUBSCRIPTION_ID"),
   azureResourceGroup: optional("AZURE_RESOURCE_GROUP_NAME"),

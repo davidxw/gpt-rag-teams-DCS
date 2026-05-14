@@ -1,6 +1,7 @@
 import { App } from "@microsoft/teams.apps";
-import { MessageActivity } from "@microsoft/teams.api";
+import { MessageActivity, ActivityLike } from "@microsoft/teams.api";
 import { OrchestratorClient } from "./orchestratorClient";
+import { FeedbackClient } from "./feedbackClient";
 import { config } from "./config";
 import {
   buildCitationAppearance,
@@ -21,7 +22,41 @@ import {
  * if longer continuity is required.
  */
 const orchestratorConvByTeamsConv = new Map<string, string>();
+
+/**
+ * 0-based counter of bot replies per Teams conversation. Used to populate
+ * `message_index` on outbound feedback payloads.
+ */
+const turnIndexByTeamsConv = new Map<string, number>();
+
+/**
+ * Per-bot-message metadata captured at send time. Keyed by the
+ * `SentActivity.id` returned from `send(...)` so the feedback handler can
+ * recover the orchestrator conversation id, the original question, the
+ * answer, and the turn index when the user clicks 👍 / 👎 on a specific
+ * reply.
+ *
+ * Same in-process volatility caveat as `orchestratorConvByTeamsConv`.
+ */
+type SentTurnMeta = {
+  orchestratorConvId: string;
+  question: string;
+  answer: string;
+  messageIndex: number;
+  clientPrincipalId: string;
+  clientPrincipalName: string;
+};
+const turnMetaByBotMessageId = new Map<string, SentTurnMeta>();
+
+/**
+ * Most recent bot message id per Teams conversation. Used as a fallback
+ * when an inbound feedback invoke arrives with no `replyToId` (e.g. in
+ * Microsoft 365 Agents Playground, which doesn't always populate it).
+ */
+const latestBotMessageIdByTeamsConv = new Map<string, string>();
+
 const orchestrator = new OrchestratorClient();
+const feedbackClient = new FeedbackClient();
 
 export const app = new App();
 
@@ -106,7 +141,8 @@ app.on("message", async ({ activity, send }) => {
     // https://learn.microsoft.com/microsoftteams/platform/bots/how-to/bot-messages-ai-generated-content
     const message = new MessageActivity(
       rewritten || "_(no answer returned)_"
-    ).addAiGenerated();
+    ).addAiGenerated()
+    .addFeedback();
 
     for (const citation of citations) {
       message.addCitation(
@@ -115,9 +151,33 @@ app.on("message", async ({ activity, send }) => {
       );
     }
 
-    await send(message);
+    const sent = await send(message);
+
+    // Cache per-turn metadata so the feedback handler can build a full
+    // payload (conversation_id, question, answer, message_index, …) from
+    // just the `replyToId` on the inbound feedback invoke.
+    if (sent?.id) {
+      const messageIndex = (turnIndexByTeamsConv.get(teamsConvId) ?? -1) + 1;
+      turnIndexByTeamsConv.set(teamsConvId, messageIndex);
+      turnMetaByBotMessageId.set(sent.id, {
+        orchestratorConvId: result.conversation_id,
+        question: text,
+        answer: answerText,
+        messageIndex,
+        clientPrincipalId: userId,
+        clientPrincipalName: userName,
+      });
+      if (teamsConvId) {
+        latestBotMessageIdByTeamsConv.set(teamsConvId, sent.id);
+      }
+    } else {
+      console.warn(
+        `[teamsBot]   ⚠ send() returned no id — feedback for this reply will not be linkable to the orchestrator turn.`
+      );
+    }
+
     console.log(
-      `[teamsBot] ✓ reply sent | total=${Date.now() - startedAt}ms | teamsConv=${teamsConvId}`
+      `[teamsBot] ✓ reply sent | total=${Date.now() - startedAt}ms | teamsConv=${teamsConvId} | botMsgId=${sent?.id ?? "(none)"}`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -129,6 +189,107 @@ app.on("message", async ({ activity, send }) => {
       "Sorry — I couldn't reach the GPT-RAG orchestrator. Please try again in a moment."
     );
   }
+});
+
+app.on("message.submit.feedback", async ({ activity, log }) => {
+  const { reaction, feedback: feedbackJson } = activity.value.actionValue;
+  const teamsConvId = activity.conversation?.id ?? "";
+
+  // Diagnostic: log the keys present on the inbound activity so we can see
+  // what the channel actually populated (replyToId, relatesTo, etc.).
+  log.info(
+    `Feedback invoke received | id=${activity.id} | replyToId=${activity.replyToId ?? "(null)"} | ` +
+      `teamsConv=${teamsConvId} | relatesToId=${(activity as any).relatesTo?.activityId ?? "(none)"}`
+  );
+
+  // Resolve the bot's outgoing message id this feedback belongs to.
+  // Real Teams populates `replyToId`; Microsoft 365 Agents Playground
+  // (and some other harnesses) do not — fall back to the most recent bot
+  // reply in the same Teams conversation.
+  let botMessageId: string | undefined =
+    activity.replyToId ??
+    (activity as any).relatesTo?.activityId ??
+    undefined;
+  let resolution: "replyToId" | "latest-fallback" = "replyToId";
+  if (!botMessageId && teamsConvId) {
+    botMessageId = latestBotMessageIdByTeamsConv.get(teamsConvId);
+    resolution = "latest-fallback";
+  }
+
+  if (!botMessageId) {
+    log.warn(
+      `Could not resolve bot message id for feedback (no replyToId and no recent reply for teamsConv=${teamsConvId}). Dropping feedback.`
+    );
+    return;
+  }
+
+  const meta = turnMetaByBotMessageId.get(botMessageId);
+  if (!meta) {
+    log.warn(
+      `No cached turn metadata for botMessageId=${botMessageId} ` +
+        `(resolution=${resolution}; likely sent before the most recent app restart). Dropping feedback.`
+    );
+    return;
+  }
+
+  // The `feedback` field may arrive as either a JSON envelope (real Teams,
+  // e.g. '{"feedbackText":"Nice!"}') or a raw string (Microsoft 365 Agents
+  // Playground sends just the typed text). Handle both, and treat empty
+  // string as "no comment" rather than a parse error.
+  let comment = "";
+  if (feedbackJson) {
+    try {
+      const parsed = JSON.parse(feedbackJson);
+      if (parsed && typeof parsed === "object") {
+        comment =
+          typeof parsed.feedbackText === "string" ? parsed.feedbackText : "";
+      } else if (typeof parsed === "string") {
+        // JSON-encoded plain string, e.g. '"hello"'.
+        comment = parsed;
+      } else {
+        comment = String(feedbackJson);
+      }
+    } catch {
+      // Not JSON — assume it's the raw comment text (Playground behavior).
+      comment = feedbackJson;
+    }
+  }
+
+  // Teams sends `like`/`dislike`; the feedback backend expects `up`/`down`.
+  const rating =
+    reaction === "like" ? "up" : reaction === "dislike" ? "down" : reaction;
+
+  const payload = {
+    conversation_id: meta.orchestratorConvId,
+    question: meta.question,
+    answer: meta.answer,
+    rating,
+    comment,
+    message_index: meta.messageIndex,
+    client_principal_id: meta.clientPrincipalId,
+    client_principal_name: meta.clientPrincipalName,
+    source: "teams",
+    // Bot doesn't currently resolve the user's groups; send empty array
+    // for parity with the feedback contract.
+    client_group_names: [] as string[],
+  };
+
+  log.info(
+    `Resolved feedback | teamsConv=${teamsConvId} | botMsgId=${botMessageId} (via ${resolution}) | ` +
+      `orchestratorConv=${meta.orchestratorConvId} | messageIndex=${meta.messageIndex} | ` +
+      `rating=${rating} (raw=${reaction}) | commentChars=${comment.length}`
+  );
+
+  // Fire-and-forget POST to the `feedback` function. The Teams invoke
+  // response must complete promptly and any failure must be invisible to
+  // the user — FeedbackClient.send() never throws and logs internally.
+  void feedbackClient.send(payload).then((ok) => {
+    if (ok) {
+      log.info(
+        `Feedback POSTed OK | botMsgId=${botMessageId} | orchestratorConv=${meta.orchestratorConvId}`
+      );
+    }
+  });
 });
 
 app.event("error", ({ error }) => {
