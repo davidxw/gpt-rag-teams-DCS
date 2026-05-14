@@ -1,8 +1,4 @@
-import {
-  AzureCliCredential,
-  ChainedTokenCredential,
-  ManagedIdentityCredential,
-} from "@azure/identity";
+import { DefaultAzureCredential } from "@azure/identity";
 import { config } from "./config";
 
 export interface FeedbackPayload {
@@ -43,10 +39,12 @@ export interface FeedbackPayload {
  */
 export class FeedbackClient {
   private cachedKey: string | null = null;
-  private credential = new ChainedTokenCredential(
-    new ManagedIdentityCredential(),
-    new AzureCliCredential()
-  );
+  // DefaultAzureCredential picks the right identity in each environment:
+  //   • Azure App Service: managed identity. When a user-assigned MI is
+  //     attached, set the App Setting `AZURE_CLIENT_ID` to that UMI's
+  //     clientId so DAC unambiguously selects it.
+  //   • Local dev: `az login` (AzureCliCredential) or VS Code sign-in.
+  private credential = new DefaultAzureCredential();
 
   /**
    * POSTs the feedback payload. Returns true on HTTP 2xx, false otherwise.
@@ -95,6 +93,9 @@ export class FeedbackClient {
 
   private async getFunctionKey(): Promise<string> {
     if (config.feedbackFunctionKey) {
+      console.log(
+        "[feedbackClient] using static FEEDBACK_FUNCTION_KEY env var"
+      );
       return config.feedbackFunctionKey;
     }
     if (this.cachedKey) {
@@ -107,8 +108,18 @@ export class FeedbackClient {
       !config.azureOrchestratorFuncName
     ) {
       // No static key and no MI lookup info — assume anonymous endpoint.
+      console.warn(
+        "[feedbackClient] ⚠ no FEEDBACK_FUNCTION_KEY and missing one of " +
+          "AZURE_SUBSCRIPTION_ID / AZURE_RESOURCE_GROUP_NAME / AZURE_ORCHESTRATOR_FUNC_NAME — " +
+          "sending request with NO x-functions-key header (will 401 if function auth is required)"
+      );
       return "";
     }
+
+    console.log(
+      `[feedbackClient] fetching function key via MI listKeys | sub=${config.azureSubscriptionId} | ` +
+        `rg=${config.azureResourceGroup} | func=${config.azureOrchestratorFuncName}`
+    );
 
     const token = await this.credential.getToken(
       "https://management.azure.com/.default"
@@ -130,6 +141,10 @@ export class FeedbackClient {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
+      console.error(
+        `[feedbackClient] ✗ ARM listKeys ${res.status} for feedback | url=${url} | body=${text.slice(0, 500)} | ` +
+          `(403 usually means the bot's managed identity lacks 'Microsoft.Web/sites/functions/listKeys/action' on the function app)`
+      );
       throw new Error(
         `Function listKeys failed (${res.status}): ${text.slice(0, 500)}`
       );
@@ -140,6 +155,9 @@ export class FeedbackClient {
       throw new Error("listKeys response did not include 'default' key");
     }
 
+    console.log(
+      "[feedbackClient] ✓ fetched feedback function key via MI listKeys (cached for process lifetime)"
+    );
     this.cachedKey = body.default;
     return this.cachedKey;
   }

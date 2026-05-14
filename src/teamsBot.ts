@@ -267,26 +267,35 @@ app.on("message.submit.feedback", async ({ activity, log }) => {
     return;
   }
 
-  // The `feedback` field may arrive as either a JSON envelope (real Teams,
-  // e.g. '{"feedbackText":"Nice!"}') or a raw string (Microsoft 365 Agents
-  // Playground sends just the typed text). Handle both, and treat empty
-  // string as "no comment" rather than a parse error.
+  // The `feedback` field may arrive as:
+  //   • an already-parsed object (real Teams / Bot Framework SDK), e.g.
+  //     `{ feedbackText: "Nice!" }`
+  //   • a JSON string envelope, e.g. `'{"feedbackText":"Nice!"}'`
+  //   • a raw plain string (Microsoft 365 Agents Playground sends just
+  //     the typed text)
+  // Normalize all three into a plain string for the feedback backend,
+  // which strictly requires `comment` to be a string.
   let comment = "";
-  if (feedbackJson) {
-    try {
-      const parsed = JSON.parse(feedbackJson);
-      if (parsed && typeof parsed === "object") {
-        comment =
-          typeof parsed.feedbackText === "string" ? parsed.feedbackText : "";
-      } else if (typeof parsed === "string") {
-        // JSON-encoded plain string, e.g. '"hello"'.
-        comment = parsed;
-      } else {
-        comment = String(feedbackJson);
+  if (feedbackJson != null) {
+    if (typeof feedbackJson === "object") {
+      const obj = feedbackJson as { feedbackText?: unknown };
+      comment = typeof obj.feedbackText === "string" ? obj.feedbackText : "";
+    } else if (typeof feedbackJson === "string" && feedbackJson.length > 0) {
+      try {
+        const parsed = JSON.parse(feedbackJson);
+        if (parsed && typeof parsed === "object") {
+          comment =
+            typeof parsed.feedbackText === "string" ? parsed.feedbackText : "";
+        } else if (typeof parsed === "string") {
+          // JSON-encoded plain string, e.g. '"hello"'.
+          comment = parsed;
+        } else {
+          comment = feedbackJson;
+        }
+      } catch {
+        // Not JSON — assume it's the raw comment text (Playground behavior).
+        comment = feedbackJson;
       }
-    } catch {
-      // Not JSON — assume it's the raw comment text (Playground behavior).
-      comment = feedbackJson;
     }
   }
 

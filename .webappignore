@@ -6,16 +6,11 @@
 .notification.localstore.json
 .notification.playgroundstore.json
 .vscode
-*.js.map
-*.ts.map
-*.ts
 .git*
-.tsbuildinfo
 CHANGELOG.md
 readme.md
 local.settings.json
 test
-tsconfig.json
 .DS_Store
 m365agents.yml
 m365agents.*.yml
@@ -26,3 +21,4 @@ m365agents.*.yml
 /appPackage/
 /infra/
 /devTools/
+.env

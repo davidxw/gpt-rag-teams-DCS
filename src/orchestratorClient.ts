@@ -1,8 +1,4 @@
-import {
-  AzureCliCredential,
-  ChainedTokenCredential,
-  ManagedIdentityCredential,
-} from "@azure/identity";
+import { DefaultAzureCredential } from "@azure/identity";
 import { config } from "./config";
 
 export interface OrchestratorRequest {
@@ -58,10 +54,12 @@ export interface OrchestratorResponse {
  */
 export class OrchestratorClient {
   private cachedKey: string | null = null;
-  private credential = new ChainedTokenCredential(
-    new ManagedIdentityCredential(),
-    new AzureCliCredential()
-  );
+  // DefaultAzureCredential picks the right identity in each environment:
+  //   • Azure App Service: managed identity. When a user-assigned MI is
+  //     attached, set the App Setting `AZURE_CLIENT_ID` to that UMI's
+  //     clientId so DAC unambiguously selects it.
+  //   • Local dev: `az login` (AzureCliCredential) or VS Code sign-in.
+  private credential = new DefaultAzureCredential();
 
   async ask(req: OrchestratorRequest): Promise<OrchestratorResponse> {
     const key = await this.getFunctionKey();
@@ -81,6 +79,10 @@ export class OrchestratorClient {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
+      console.error(
+        `[orchestratorClient] ✗ orchestrator HTTP ${res.status} | endpoint=${config.orchestratorEndpoint} | ` +
+          `keyHeaderSent=${key ? "yes" : "NO"} | body=${text.slice(0, 500)}`
+      );
       throw new Error(
         `Orchestrator returned HTTP ${res.status}: ${text.slice(0, 500)}`
       );
@@ -91,6 +93,9 @@ export class OrchestratorClient {
 
   private async getFunctionKey(): Promise<string> {
     if (config.orchestratorFunctionKey) {
+      console.log(
+        "[orchestratorClient] using static ORCHESTRATOR_FUNCTION_KEY env var"
+      );
       return config.orchestratorFunctionKey;
     }
     if (this.cachedKey) {
@@ -104,8 +109,18 @@ export class OrchestratorClient {
     ) {
       // No static key and no MI lookup info — assume the endpoint is
       // anonymous (e.g. private endpoint with network ACLs only).
+      console.warn(
+        "[orchestratorClient] ⚠ no ORCHESTRATOR_FUNCTION_KEY and missing one of " +
+          "AZURE_SUBSCRIPTION_ID / AZURE_RESOURCE_GROUP_NAME / AZURE_ORCHESTRATOR_FUNC_NAME — " +
+          "sending request with NO x-functions-key header (will 401 if function auth is required)"
+      );
       return "";
     }
+
+    console.log(
+      `[orchestratorClient] fetching function key via MI listKeys | sub=${config.azureSubscriptionId} | ` +
+        `rg=${config.azureResourceGroup} | func=${config.azureOrchestratorFuncName}`
+    );
 
     const token = await this.credential.getToken(
       "https://management.azure.com/.default"
@@ -127,6 +142,10 @@ export class OrchestratorClient {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
+      console.error(
+        `[orchestratorClient] ✗ ARM listKeys ${res.status} for orc | url=${url} | body=${text.slice(0, 500)} | ` +
+          `(403 usually means the bot's managed identity lacks 'Microsoft.Web/sites/functions/listKeys/action' on the function app)`
+      );
       throw new Error(
         `Function listKeys failed (${res.status}): ${text.slice(0, 500)}`
       );
@@ -137,6 +156,9 @@ export class OrchestratorClient {
       throw new Error("listKeys response did not include 'default' key");
     }
 
+    console.log(
+      "[orchestratorClient] ✓ fetched orc function key via MI listKeys (cached for process lifetime)"
+    );
     this.cachedKey = body.default;
     return this.cachedKey;
   }
